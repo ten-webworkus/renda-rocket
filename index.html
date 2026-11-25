@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>連打ロケット</title>
+<meta name="description" content="ゲージで月へ、10万kmごとに連打、宇宙船を撃破。連打が続くかぎり、どこまでも飛べるブラウザゲーム。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="連打ロケット">
+<meta property="og:description" content="連打が続くかぎり、どこまでも飛べる。キミはどこまで飛ばせる？">
+<meta property="og:url" content="https://ten-webworkus.github.io/renda-rocket/">
+<meta property="og:image" content="https://ten-webworkus.github.io/renda-rocket/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="連打ロケット">
+<meta name="twitter:description" content="連打が続くかぎり、どこまでも飛べる。キミはどこまで飛ばせる？">
+<meta name="twitter:image" content="https://ten-webworkus.github.io/renda-rocket/og.jpg">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0b1630;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;color:#fff}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.top{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top) + 14px);text-align:center;pointer-events:none;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+.top .lbl{font-size:13px;font-weight:700;opacity:.85}
+.top .big{font-size:44px;font-weight:900;line-height:1.05}
+.top .big small{font-size:18px;margin-left:3px}
+.top .sub{font-size:15px;font-weight:700;margin-top:4px}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;background:rgba(8,16,40,.55);padding:24px}
+.hide{display:none!important}
+.lock{pointer-events:none}
+.lock .row{opacity:.35}
+.logo{font-size:56px;font-weight:900;line-height:1.05;text-shadow:0 4px 0 #e4502f,0 8px 0 rgba(0,0,0,.3)}
+.logo span{display:block;font-size:22px;letter-spacing:.3em;text-shadow:none;margin-bottom:6px}
+.desc{font-size:16px;font-weight:700;line-height:1.7}
+.blink{font-size:17px;font-weight:900;animation:bl 1s steps(2) infinite}
+@keyframes bl{50%{opacity:.25}}
+.res-h{font-size:52px;font-weight:900;line-height:1.05}
+.res-h small{font-size:22px}
+.res-l{font-size:16px;font-weight:700;opacity:.9}
+.place{font-size:22px;font-weight:900;background:rgba(255,255,255,.12);border-radius:14px;padding:10px 18px}
+.btn{border:0;border-radius:999px;padding:14px 30px;font-size:18px;font-weight:900;font-family:inherit;color:#132047;background:#ffd23f;box-shadow:0 5px 0 #c99a00;text-decoration:none;display:inline-block}
+.btn.x{background:#000;color:#fff;box-shadow:0 5px 0 #444}
+.back{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);border:0;border-radius:999px;padding:10px 16px;font-size:14px;font-weight:900;font-family:inherit;color:#fff;background:rgba(0,0,0,.4)}
+.best{font-size:15px;font-weight:900;color:#ffd23f}
+.best.new{font-size:22px;color:#ff6b6b;animation:bl .5s steps(2) infinite}
+.row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="top" id="top"></div>
+<button class="back hide" id="bBack">↩ スタートに戻る</button>
+<div class="ov" id="ovTitle">
+  <div class="logo"><span>れんだ</span>ロケット</div>
+  <div class="desc">ゲージを3回止めて、月を目指せ（燃料・スピード・角度）。<br>月からは10万kmごとに連打チャージ。<br>宇宙船が出たら連打で倒して物資ゲット！<br>連打が続くかぎり、どこまでも飛べる！</div>
+  <div class="best" id="tBest"></div>
+  <div class="blink">タップでスタート</div>
+</div>
+<div class="ov hide" id="ovRes">
+  <div class="res-l" id="rTap"></div>
+  <div class="res-h" id="rDist"></div>
+  <div class="place" id="rPlace"></div>
+  <div class="best" id="rBest"></div>
+  <div class="row">
+    <button class="btn" id="bRetry">もう一回</button>
+    <a class="btn x" id="bX" target="_blank" rel="noopener" href="https://twitter.com/intent/tweet">Xでポスト</a>
+  </div>
+</div>
+<script>
+"use strict";
+let BEST=0; try{ BEST=+localStorage.getItem("renda_rocket_best")||0; }catch(e){}
+function showTitleBest(){ document.getElementById("tBest").innerHTML=BEST>0?"自己ベスト "+plain(fmtKm(BEST)):""; }
+/* ===== 設定（数字はあとで調整しやすいようにここにまとめる） ===== */
+const GAUGES=[
+  {key:"fuel", name:"① 燃料",   sweep:0.8},
+  {key:"speed",name:"② スピード",sweep:0.6},
+  {key:"angle",name:"③ 角度",   sweep:0.45},
+];
+const RED=0.03, OLIVE=0.09;           // 赤い場所の中心からの幅：赤＝PERFECT、黄土＝GOOD、それ以外の緑＝BAD
+const N_PERFECT=2;                     // 赤（PERFECT）の数。位置は毎回ランダム
+let gc=[0.5];                          // 今のゲージの赤の位置
+const MOON=384400;                     // 月までの距離（km）
+const LAUNCH_MAX=MOON*1.7;             // ゲージ3つ全部PERFECTで月の1.7倍ぶんのパワー（月で止まる）
+const CP_EVERY=100000;                 // 月に着いたあと、何kmごとに連打チャージが来るか
+const RAPID_T=5;                       // 連打の秒数
+const KM_PER_TAP=2000;                 // 連打1回で進む距離（km）。10万km÷2000＝50回で次の地点に届く
+const UFO_P=0.4;                       // 月より先の連打地点で、宇宙船が出てくる確率（2回連続では出ない）
+const UFO_HP=45;                       // 宇宙船を倒すのに必要な連打回数
+const UFO_T=5;                         // 宇宙船と戦える秒数
+const UFO_SKIP=2;                      // 倒したら物資で何地点ぶん一気に進むか
+const cpKm=st=>MOON+CP_EVERY*st;         // 0回目＝月、そのあと10万kmごと
+const cpName=st=>st===0?"月":cpKm(st).toLocaleString()+"km地点";
+const FLY_PER_DEC=1.4, FLY_MIN=2.2, FLY_MAX=10;  // 上昇アニメ：距離の桁が1つ増えるごとに1.4秒（3〜10秒）
+let flyT=3;
+const IGNITE_T=1.6;                    // 発射前のエンジン噴射の秒数                         // 上昇アニメの秒数
+
+const PLACES=[
+  [0,"発射台のすぐ上"],[1,"東京スカイツリーの上"],[10,"雲の上"],[100,"宇宙"],[400,"国際宇宙ステーション"],
+  [36000,"静止衛星"],[384400,"月"],[4.2e7,"金星"],[7.8e7,"火星"],[1.5e8,"太陽"],[6.3e8,"木星"],
+  [1.3e9,"土星"],[4.3e9,"海王星"],[1.8e10,"太陽系の外"],[4e13,"となりの恒星"],[2.4e19,"アンドロメダ銀河"],[1e23,"宇宙の果て"]
+];
+function placeOf(km){ let p=PLACES[0][1]; for(const [d,n] of PLACES) if(km>=d) p=n; return p; }
+function fmtKm(km){
+  if(km<10) return km.toFixed(2)+"<small>km</small>";     // mとkmの切り替えでリセットに見えないよう、ずっとkm表示
+  if(km<100) return km.toFixed(1)+"<small>km</small>";
+  if(km<1e8) return Math.round(km).toLocaleString()+"<small>km</small>";
+  for(const [u,n] of [[1e16,"京"],[1e12,"兆"],[1e8,"億"]]) if(km>=u) return (km/u).toFixed(km/u<10?1:0)+n+"<small>km</small>";
+}
+const plain=h=>h.replace(/<[^>]+>/g,"");
+
+/* ===== 音 ===== */
+let AC=null,master=null;
+function initAudio(){
+  if(AC){ if(AC.state==="suspended") AC.resume(); return; }
+  try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch(e){}
+  AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=0.8; master.connect(AC.destination);
+}
+function tone(f,dur,type="square",vol=0.15,slide=1,at=0){
+  if(!AC) return; const t=AC.currentTime+at, o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.setValueAtTime(f,t); if(slide!==1) o.frequency.exponentialRampToValueAtTime(f*slide,t+dur);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.02);
+}
+let rumble=null;
+function startRumble(){
+  if(!AC||rumble) return; const n=AC.sampleRate*2, b=AC.createBuffer(1,n,AC.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+  const s=AC.createBufferSource(); s.buffer=b; s.loop=true;
+  const f=AC.createBiquadFilter(); f.type="lowpass"; f.frequency.value=400;
+  const g=AC.createGain(); g.gain.value=0.0001; g.gain.exponentialRampToValueAtTime(0.45,AC.currentTime+0.3);
+  s.connect(f); f.connect(g); g.connect(master); s.start(); rumble={s,g};
+}
+function stopRumble(){ if(!rumble) return; const t=AC.currentTime; rumble.g.gain.cancelScheduledValues(t); rumble.g.gain.setValueAtTime(Math.max(0.001,rumble.g.gain.value),t); rumble.g.gain.exponentialRampToValueAtTime(0.0001,t+0.6); rumble.s.stop(t+0.7); rumble=null; }
+
+/* ===== 状態 ===== */
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d"), $=id=>document.getElementById(id);
+let W,H,DPR;
+function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; }
+addEventListener("resize",resize); resize();
+
+let state="title", now=0, tS=0;
+let gi=0, gpos=0, gStopped=false, scores=[], grades=[];
+let alt=0, flyFrom=0, flyTo=0, flyNext=null, stage=0, taps=0, rapidTaps=[], tapTimes=[];
+let ufo=null, lasers=[], crates=[], ufoKills=0, lastWasUfo=false, ufoLost=false;
+let shake=0, parts=[], banner=null, groundOn=true, flying=false, passed=0;
+const stars=Array.from({length:120},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.6+0.4}));
+
+function say(text,color="#ffe678"){ banner={text,t:now,color}; }
+
+function start(){
+  $("ovTitle").classList.add("hide"); $("ovRes").classList.add("hide");
+  gi=0; scores=[]; grades=[]; alt=0; stage=0; rapidTaps=[]; ufo=null; lasers=[]; crates=[]; ufoKills=0; lastWasUfo=false; ufoLost=false; parts=[]; banner=null; groundOn=true; flying=false; passed=0;
+  startGauge();
+}
+function startGauge(){
+  state="gauge"; tS=now; gStopped=false;
+  // 赤（PERFECT）の位置を毎回ランダムに。重ならないよう間隔をあける
+  for(let k=0;k<200;k++){
+    gc=Array.from({length:N_PERFECT},()=>0.1+Math.random()*0.8).sort((a,b)=>a-b);
+    if(gc.every((c,i)=>i===0||c-gc[i-1]>OLIVE*2+0.08)) break;
+  }
+}
+function gaugePos(){ // 0..1 の往復
+  const ph=((now-tS)/GAUGES[gi].sweep)%2; return ph<1?ph:2-ph;
+}
+function stopGauge(){
+  gStopped=true; gpos=gaugePos();
+  const d=Math.min(...gc.map(c=>Math.abs(gpos-c)));
+  let sc,gr;
+  if(d<=RED){ sc=1; gr="PERFECT"; }
+  else if(d<=OLIVE){ sc=0.9-0.4*(d-RED)/(OLIVE-RED); gr="GOOD"; }
+  else { sc=Math.max(0.1,0.4-0.3*(d-OLIVE)/(0.4-OLIVE)); gr="BAD"; }
+  scores.push(sc); grades.push(gr);
+  say(gr+"!", gr==="PERFECT"?"#ff6b6b":gr==="GOOD"?"#ffe678":"#9fe39f");
+  if(gr==="PERFECT"){ tone(880,0.12,"square",0.12); tone(1320,0.2,"square",0.1,1,0.08); } else if(gr==="GOOD") tone(660,0.15,"square",0.12); else tone(220,0.25,"sawtooth",0.12,0.6);
+  state="gaugeDone"; tS=now;
+}
+function launch(){            // まずエンジン点火（発射台の上で噴射）
+  state="ignite"; tS=now; startRumble(); say("エンジン点火！","#ffb347");
+  tone(70,IGNITE_T,"sawtooth",0.12,2.5);
+}
+function liftoff(){
+  const a=LAUNCH_MAX*scores[0]*scores[1]*scores[2];
+  flyStart(0,a);
+  tone(110,0.6,"sawtooth",0.2,4);
+}
+function flyStart(from,to){
+  state="fly"; tS=now; flyFrom=Math.max(0.001,from); flyTo=to; flying=true; startRumble();
+  const cp=cpKm(stage);
+  flyNext = to>=cp ? "rapid" : "end";
+  if(flyNext==="rapid") flyTo=cp;          // チェックポイントで止まる
+  else flyTo=to;
+  const dec=Math.log10(Math.max(flyTo,1)/Math.max(flyFrom,1));
+  flyT=Math.min(FLY_MAX,Math.max(FLY_MIN,dec*FLY_PER_DEC));
+}
+function startRapid(){
+  if(stage>=1 && !lastWasUfo && Math.random()<UFO_P){ startUfo(); return; }
+  lastWasUfo=false; rapidStart();
+}
+function rapidStart(){ state="rapid"; tS=now; taps=0; tapTimes=[]; say(stage===0?"月に到着！連打で再加速！":cpName(stage)+"！連打で再加速！"); }
+function endRapid(){
+  rapidTaps.push(taps);
+  const base=cpKm(stage), to=base+taps*KM_PER_TAP;
+  stage++;
+  flyStart(base,to);
+  tone(160,0.6,"sawtooth",0.2,4);
+}
+function rapidTap(){
+  taps++; tapTimes.push(now); shake=Math.min(10,shake+2); tone(220+taps*10,0.05,"square",0.08);
+  for(let i=0;i<3;i++) parts.push({x:W/2+(Math.random()-.5)*30,y:H*0.62,vx:(Math.random()-.5)*160,vy:80+Math.random()*120,life:0.5,r:8+Math.random()*8});
+}
+/* ===== 宇宙船バトル ===== */
+function startUfo(){
+  lastWasUfo=true; state="ufoIn"; tS=now; taps=0; tapTimes=[];
+  ufo={hp:UFO_HP, y:-120, x:W/2, hit:0, dead:false, flee:false};
+  say("宇宙船が現れた！","#ff7ad9");
+  [880,660,880,660].forEach((f,i)=>tone(f,0.12,"square",0.1,1,i*0.14));
+}
+function battleTap(){
+  taps++; tapTimes.push(now); ufo.hp--; ufo.hit=0.12; shake=Math.min(8,shake+1.5);
+  lasers.push({t:now, dx:(Math.random()-.5)*50});
+  tone(1400-Math.min(600,taps*10),0.07,"square",0.08,0.5);
+  for(let i=0;i<4;i++) parts.push({x:ufo.x+(Math.random()-.5)*60,y:ufo.y+20,vx:(Math.random()-.5)*240,vy:(Math.random()-.5)*240,life:0.35,r:3+Math.random()*4,spark:true});
+  if(ufo.hp<=0) ufoWin();
+}
+function ufoWin(){
+  state="ufoWin"; tS=now; ufo.dead=true; ufoKills++; rapidTaps.push(taps);
+  say("撃破！物資ゲット！","#7dffb0");
+  for(let i=0;i<40;i++){ const a=Math.random()*7, v=80+Math.random()*320; parts.push({x:ufo.x,y:ufo.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:0.9,r:6+Math.random()*12,fire:true}); }
+  for(let i=0;i<3;i++) crates.push({x:ufo.x+(i-1)*50,y:ufo.y,vy:-120-Math.random()*60,t:now});
+  tone(90,0.9,"sawtooth",0.25,0.3); [523,659,784,1047,1319].forEach((f,i)=>tone(f,0.12,"square",0.1,1,0.3+i*0.07));
+}
+function ufoLose(){
+  state="ufoLose"; tS=now; ufo.flee=true; ufoLost=true; rapidTaps.push(taps);
+  say("物資を奪われた…","#9fc3ff"); tone(300,0.8,"sawtooth",0.12,0.3);
+}
+function afterUfoWin(){
+  const base=cpKm(stage); stage+=UFO_SKIP;
+  flyStart(base,cpKm(stage));
+  say("物資で大加速！","#7dffb0"); tone(160,0.6,"sawtooth",0.2,4);
+}
+function drawUFO(x,y,sc,t,hit){
+  ctx.save(); ctx.translate(x,y); ctx.scale(sc,sc); ctx.lineJoin="round";
+  // 下からの光
+  const gl=ctx.createRadialGradient(0,26,4,0,26,90); gl.addColorStop(0,"rgba(120,255,200,.55)"); gl.addColorStop(1,"rgba(120,255,200,0)");
+  ctx.fillStyle=gl; ctx.beginPath(); ctx.ellipse(0,30,90,40,0,0,7); ctx.fill();
+  ctx.strokeStyle="#1b2340"; ctx.lineWidth=3.5;
+  // ドーム
+  const dg=ctx.createLinearGradient(-30,-50,30,0); dg.addColorStop(0,"rgba(200,245,255,.95)"); dg.addColorStop(1,"rgba(90,170,220,.85)");
+  ctx.fillStyle=dg; ctx.beginPath(); ctx.ellipse(0,-6,34,36,0,Math.PI,0); ctx.closePath(); ctx.fill();
+  // 宇宙人
+  ctx.fillStyle="#6be36b"; ctx.beginPath(); ctx.ellipse(0,-14,15,17,0,0,7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#6be36b"; ctx.beginPath(); ctx.moveTo(-8,-29); ctx.lineTo(-14,-42); ctx.moveTo(8,-29); ctx.lineTo(14,-42); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-14,-42,3.5,0,7); ctx.arc(14,-42,3.5,0,7); ctx.fill();
+  ctx.fillStyle="#111"; ctx.beginPath(); ctx.ellipse(-6,-15,5,7,-0.4,0,7); ctx.ellipse(6,-15,5,7,0.4,0,7); ctx.fill();
+  ctx.strokeStyle="#111"; ctx.lineWidth=2.5; ctx.beginPath(); ctx.moveTo(-12,-25); ctx.lineTo(-3,-21); ctx.moveTo(12,-25); ctx.lineTo(3,-21); ctx.stroke();   // 怒り眉
+  ctx.strokeStyle="#1b2340"; ctx.lineWidth=3.5;
+  ctx.beginPath(); ctx.ellipse(0,-6,34,36,0,Math.PI,0); ctx.stroke();
+  ctx.fillStyle="rgba(255,255,255,.7)"; ctx.beginPath(); ctx.ellipse(-18,-26,5,9,0.5,0,7); ctx.fill();
+  // 円盤
+  const bg=ctx.createLinearGradient(0,-8,0,24); bg.addColorStop(0,"#eef1f7"); bg.addColorStop(0.5,"#a9b2c4"); bg.addColorStop(1,"#6b7487");
+  ctx.fillStyle=hit>0?"#ffffff":bg; ctx.beginPath(); ctx.ellipse(0,8,78,20,0,0,7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=hit>0?"#ffd0d0":"#7a3fd1"; ctx.beginPath(); ctx.ellipse(0,4,78,6,0,Math.PI,0); ctx.fill();
+  // ライト
+  const cols=["#ff4d6d","#ffd23f","#4dd2ff"];
+  for(let i=0;i<7;i++){ const a=-Math.PI+((i+0.5)/7)*Math.PI; const lx=Math.cos(a)*62, ly=12+Math.sin(-a)*8;
+    ctx.fillStyle=cols[(i+Math.floor(t*6))%3]; ctx.beginPath(); ctx.arc(lx,ly,5,0,7); ctx.fill(); ctx.lineWidth=2; ctx.stroke(); }
+  // 下の部分
+  ctx.lineWidth=3.5; ctx.fillStyle="#5b6378"; ctx.beginPath(); ctx.ellipse(0,26,26,7,0,0,7); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function finish(){
+  state="result"; stopRumble(); flying=false;
+  const pl=placeOf(alt);
+  $("rTap").innerHTML=GAUGES.map((g,i)=>`${g.name.slice(2)} ${grades[i]}`).join("　")+(rapidTaps.length?`<br>月から先の連打地点 ${Math.max(0,Math.floor((alt-MOON)/CP_EVERY+1e-9))}か所通過（合計 ${rapidTaps.reduce((a,b)=>a+b,0)}回連打）`:"");
+  $("rDist").innerHTML=fmtKm(alt);
+  const isNew=alt>BEST+1e-6 && alt>0.01;
+  if(isNew){ BEST=alt; try{ localStorage.setItem("renda_rocket_best",BEST); }catch(e){} }
+  $("rBest").className="best"+(isNew?" new":"");
+  $("rBest").innerHTML=isNew?"🎉 自己ベスト更新！":"自己ベスト "+plain(fmtKm(BEST));
+  $("rPlace").textContent=(alt<MOON?"😢 ":"🚀 ")+pl+"まで到達！"+(ufoLost?"（宇宙船にやられた）":"");
+  if(ufoKills) $("rTap").innerHTML+=`<br>宇宙船 ${ufoKills}機 撃破`;
+  const text=`🚀 連打ロケット\n「${pl}」まで到達！（${plain(fmtKm(alt))}）\nキミはどこまで飛ばせる？ #連打ロケット`;
+  $("bX").href="https://twitter.com/intent/tweet?text="+encodeURIComponent(text)+"&url="+encodeURIComponent("https://ten-webworkus.github.io/renda-rocket/");
+  $("ovRes").classList.remove("hide"); $("ovRes").classList.add("lock");
+  setTimeout(()=>$("ovRes").classList.remove("lock"),1500);   // 連打の指がそのまま「もう一回」に当たらないように
+  [523,659,784,1047].forEach((f,i)=>tone(f,0.15,"square",0.1,1,i*0.08));
+}
+addEventListener("pointerdown",e=>{
+  if(e.target.closest("button,a")) return;
+  e.preventDefault(); initAudio();
+  if(state==="title") start();
+  else if(state==="gauge") stopGauge();
+  else if(state==="rapid") rapidTap();
+  else if(state==="battle") battleTap();
+},{passive:false});
+$("bRetry").addEventListener("click",()=>{ initAudio(); start(); });
+function backToTitle(){
+  stopRumble(); state="title"; alt=0; parts=[]; ufo=null; lasers=[]; crates=[]; banner=null; shake=0;
+  $("ovRes").classList.add("hide"); $("ovTitle").classList.remove("hide"); showTitleBest();
+}
+$("bBack").addEventListener("click",backToTitle);
+
+/* ===== ループ ===== */
+const ease=u=>0.5-0.5*Math.cos(Math.PI*u);
+function frame(ts){
+  const prev=now; now=ts/1000; const dt=Math.min(0.05,now-prev||0.016);
+  let html="";
+  if(state==="gauge"||state==="gaugeDone"){
+    html=`<div class="lbl">チャージ ${gi+1}/3</div><div class="big">${GAUGES[gi].name}</div><div class="sub">赤で止めろ！</div>`;
+    if(state==="gaugeDone" && now-tS>0.8){ gi++; if(gi<GAUGES.length) startGauge(); else launch(); }
+  } else if(state==="ignite"){
+    const u=(now-tS)/IGNITE_T;
+    html=`<div class="lbl">発射まで</div><div class="big">${Math.max(0,Math.ceil(3-u*3))}</div>`;
+    shake=Math.max(shake,2+u*8);
+    if(u>=1) liftoff();
+  } else if(state==="fly"){
+    const u=Math.min(1,(now-tS)/flyT);
+    alt=Math.exp(Math.log(flyFrom)+(Math.log(Math.max(flyTo,0.001))-Math.log(flyFrom))*ease(u));
+    while(passed<PLACES.length && PLACES[passed][0]<=alt){ if(PLACES[passed][0]>0 && PLACES[passed][0]!==cpKm(stage)) say(PLACES[passed][1]+"を通過！"); passed++; }
+    const cp=cpKm(stage);
+    html=`<div class="lbl">高度</div><div class="big">${fmtKm(alt)}</div><div class="sub">次の連打地点：${cpName(stage)}（${cp.toLocaleString()}km）</div>`;
+    if(u>=1){ if(flyNext==="rapid") startRapid(); else { say(cpName(stage)+"に届かず…","#9fc3ff"); setTimeout(()=>{ if(state==="ending") finish(); },900); state="ending"; } }
+  } else if(state==="ufoIn"){
+    ufo.y+=(H*0.27-ufo.y)*Math.min(1,dt*4);
+    html=`<div class="lbl">${cpName(stage)}</div><div class="big" style="color:#ff9ae6">宇宙船だ！</div><div class="sub">連打で撃て！</div>`;
+    if(now-tS>1.3){ state="battle"; tS=now; say("連打で撃て！","#ff7ad9"); }
+  } else if(state==="battle"){
+    const left=Math.max(0,UFO_T-(now-tS));
+    ufo.x=W/2+Math.sin(now*2.2)*W*0.18; ufo.y=H*0.27+Math.sin(now*3.1)*14;
+    html=`<div class="lbl">宇宙船を倒せ！ のこり</div><div class="big">${left.toFixed(1)}<small>秒</small></div><div class="sub">あと${Math.max(0,ufo.hp)}発</div>`;
+    if(left<=0 && ufo.hp>0) ufoLose();
+  } else if(state==="ufoWin"){
+    html=`<div class="lbl">撃破！</div><div class="big" style="color:#7dffb0">物資ゲット</div><div class="sub">${UFO_SKIP}地点ぶん一気に進む！</div>`;
+    if(now-tS>1.8){ ufo=null; afterUfoWin(); }
+  } else if(state==="ufoLose"){
+    ufo.y-=dt*500; ufo.x+=dt*200;
+    html=`<div class="lbl">高度</div><div class="big">${fmtKm(alt)}</div>`;
+    if(now-tS>1.6){ ufo=null; finish(); }
+  } else if(state==="rapid"){
+    const left=Math.max(0,RAPID_T-(now-tS));
+    const rate=tapTimes.filter(t=>now-t<1).length;
+    const need=Math.ceil(CP_EVERY/KM_PER_TAP)-taps;
+    html=`<div class="lbl">連打！ のこり</div><div class="big">${left.toFixed(1)}<small>秒</small></div><div class="sub">${taps}回 ／ ${rate}回/秒</div>`;
+    if(left<=0) endRapid();
+  } else if(state==="ending"){
+    html=`<div class="lbl">高度</div><div class="big">${fmtKm(alt)}</div>`;
+  } else if(state==="result"){
+    html=`<div class="lbl">到達</div><div class="big">${fmtKm(alt)}</div>`;
+  }
+  $("top").innerHTML=html;
+  $("bBack").classList.toggle("hide", state==="title"||state==="result");
+  draw(dt);
+  requestAnimationFrame(frame);
+}
+function drawRocket(x,y){
+  ctx.save(); ctx.translate(x,y); ctx.lineJoin="round"; ctx.lineWidth=3.5; ctx.strokeStyle="#1b2340";
+  // 尾翼（左右）
+  ctx.fillStyle="#e4402f";
+  ctx.beginPath(); ctx.moveTo(-20,10); ctx.quadraticCurveTo(-44,22,-42,52); ctx.lineTo(-20,40); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(20,10); ctx.quadraticCurveTo(44,22,42,52); ctx.lineTo(20,40); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // ノズル
+  ctx.fillStyle="#7d8597"; ctx.beginPath(); ctx.moveTo(-12,42); ctx.lineTo(12,42); ctx.lineTo(16,55); ctx.lineTo(-16,55); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // 胴体
+  const body=new Path2D(); body.moveTo(0,-64); body.bezierCurveTo(24,-48,26,-10,22,44); body.lineTo(-22,44); body.bezierCurveTo(-26,-10,-24,-48,0,-64); body.closePath();
+  const gb=ctx.createLinearGradient(-24,0,24,0); gb.addColorStop(0,"#ffffff"); gb.addColorStop(0.55,"#f1f3f8"); gb.addColorStop(1,"#c9cfdc");
+  ctx.fillStyle=gb; ctx.fill(body);
+  ctx.save(); ctx.clip(body);
+  ctx.fillStyle="#e4402f"; ctx.fillRect(-30,-70,60,36);            // ノーズ
+  ctx.fillStyle="rgba(0,0,0,.12)"; ctx.fillRect(10,-70,20,120);      // 影
+  ctx.fillStyle="#ffd23f"; ctx.fillRect(-30,24,60,8);                // 黄色ライン
+  ctx.fillStyle="#1b2340"; ctx.fillRect(-30,-35,60,3);
+  ctx.restore();
+  ctx.stroke(body);
+  // 窓
+  ctx.fillStyle="#1b2340"; ctx.beginPath(); ctx.arc(0,-6,13,0,7); ctx.fill();
+  const gw=ctx.createRadialGradient(-4,-10,2,0,-6,11); gw.addColorStop(0,"#bfeaff"); gw.addColorStop(1,"#3b8fd6");
+  ctx.fillStyle=gw; ctx.beginPath(); ctx.arc(0,-6,9.5,0,7); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.85)"; ctx.beginPath(); ctx.ellipse(-3.5,-10,3,2,-0.6,0,7); ctx.fill();
+  // 中央の尾翼
+  ctx.fillStyle="#b52a1e"; ctx.beginPath(); ctx.moveTo(-3.5,18); ctx.lineTo(3.5,18); ctx.lineTo(3.5,50); ctx.lineTo(-3.5,50); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function draw(dt){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const la=Math.log10(alt+0.001);
+  const k=Math.max(0,Math.min(1,(la-0.5)/2));
+  const g=ctx.createLinearGradient(0,0,0,H);
+  const mix=(a,b)=>a.map((v,i)=>Math.round(v+(b[i]-v)*k));
+  g.addColorStop(0,`rgb(${mix([74,168,255],[5,8,24])})`); g.addColorStop(1,`rgb(${mix([191,230,255],[18,26,60])})`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  const moving=state==="fly"||state==="rapid"||state==="ufoIn"||state==="battle"||state==="ufoWin"||state==="ufoLose";
+  if(k>0){
+    ctx.fillStyle=`rgba(255,255,255,${k})`;
+    const sp=state==="fly"?(now*0.6)%1:(now*0.05)%1;
+    for(const s of stars){ const y=((s.y+sp*(1+s.r))%1)*H; ctx.fillRect(s.x*W,y,s.r,s.r*(state==="fly"?6:1)); }
+  }
+  // 月（月チェックポイント付近）
+  if(la>4.5&&alt<MOON+80000){ const mY=alt<MOON?H*0.25+(5.58-la)*H*0.6:H*0.25+(alt-MOON)/60000*H; ctx.fillStyle="#e8e2c8"; ctx.beginPath(); ctx.arc(W*0.72,mY,60,0,7); ctx.fill(); ctx.fillStyle="#cfc7a6"; ctx.beginPath(); ctx.arc(W*0.7,mY-15,12,0,7); ctx.arc(W*0.75,mY+18,9,0,7); ctx.fill(); }
+  // 地面
+  let groundY=H*0.86;
+  if(alt>0.0011) groundY+= Math.min(H*2,(la+3)*H*0.5);
+  if(groundY<H+10){
+    ctx.fillStyle="#5aa646"; ctx.fillRect(0,groundY,W,H-groundY);
+    ctx.fillStyle="#8a8f99"; ctx.fillRect(W/2-60,groundY-14,120,14);
+    ctx.fillStyle="#5b606b"; ctx.fillRect(W/2+44,groundY-150,10,136);
+  }
+  // 雲
+  if(state==="fly" && la>-1 && la<1.4){
+    ctx.fillStyle="rgba(255,255,255,.8)";
+    for(let i=0;i<6;i++){ const y=((now*1.4+i/6)%1)*H*1.4-H*0.2, x=(i*0.37%1)*W; ctx.beginPath(); ctx.ellipse(x,y,70,22,0,0,7); ctx.ellipse(x+40,y-10,46,18,0,0,7); ctx.fill(); }
+  }
+  // ロケット
+  shake=Math.max(0,shake-dt*30);
+  const lift=Math.max(0,Math.min(1,(la+3)/1.2));
+  const ry = (H*0.86-70)+(H*0.5-(H*0.86-70))*lift;
+  const rx = W/2+(Math.random()-.5)*shake;
+  if(state==="ignite"){
+    const u=Math.min(1,(now-tS)/IGNITE_T);
+    // 発射台から左右に広がる煙
+    const gy=ry+70;
+    for(let i=0;i<Math.ceil(2+u*5);i++){ const dir=Math.random()<.5?-1:1; parts.push({x:rx+dir*20,y:gy,vx:dir*(80+Math.random()*260*u),vy:-Math.random()*50,life:0.9+u*0.6,r:10+Math.random()*14}); }
+  }
+  if(moving||state==="ending"){
+    const fl=state==="fly"?1:state==="rapid"?0.4+Math.min(0.8,tapTimes.filter(t=>now-t<1).length/12):0.3;
+    for(let i=0;i<3;i++){
+      ctx.fillStyle=["rgba(255,90,30,.8)","rgba(255,180,40,.85)","rgba(255,250,200,.9)"][i];
+      const w=(22-i*6)*(0.7+fl*0.5), h=(60-i*16)*fl*(0.8+Math.random()*0.4);
+      ctx.beginPath(); ctx.moveTo(rx-w,ry+54); ctx.quadraticCurveTo(rx,ry+54+h*2,rx+w,ry+54); ctx.fill();
+    }
+    if(state==="fly") for(let i=0;i<2;i++) parts.push({x:rx+(Math.random()-.5)*20,y:ry+70,vx:(Math.random()-.5)*80,vy:160+Math.random()*200,life:0.7,r:10+Math.random()*12});
+  }
+  for(const p of parts){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt; p.r+=dt*20; ctx.fillStyle=p.fire?`rgba(255,${120+Math.random()*100|0},40,${Math.max(0,p.life)})`:p.spark?`rgba(255,240,120,${Math.max(0,p.life*2)})`:`rgba(235,235,240,${Math.max(0,p.life)})`; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); }
+  parts=parts.filter(p=>p.life>0);
+  if(state==="ignite"){   // 噴射の炎は煙より手前に描く
+    const fl=0.15+Math.min(1,(now-tS)/IGNITE_T)*0.85;
+    for(let i=0;i<3;i++){
+      ctx.fillStyle=["rgba(255,90,30,.85)","rgba(255,180,40,.9)","rgba(255,250,200,.95)"][i];
+      const w=(22-i*6)*(0.7+fl*0.5), h=(40-i*11)*fl*(0.8+Math.random()*0.4);
+      ctx.beginPath(); ctx.moveTo(rx-w,ry+54); ctx.quadraticCurveTo(rx,ry+54+h*2,rx+w,ry+54); ctx.fill();
+    }
+  }
+  if(state!=="title"&&state!=="result"){
+    drawRocket(rx,ry);
+  }
+  // タイミングゲージ
+  if(state==="gauge"||state==="gaugeDone"){
+    const gw=Math.min(340,W-40), gh=46, gx=(W-gw)/2, gy=H*0.3;
+    ctx.fillStyle="#000"; ctx.fillRect(gx-6,gy-6,gw+12,gh+12);
+    ctx.fillStyle="#22dd22"; ctx.fillRect(gx,gy,gw,gh);
+    ctx.fillStyle="#8a7d10"; for(const c of gc) ctx.fillRect(gx+gw*(c-OLIVE),gy,gw*OLIVE*2,gh);
+    ctx.fillStyle="#a01010"; for(const c of gc) ctx.fillRect(gx+gw*(c-RED),gy,gw*RED*2,gh);
+    const p=state==="gauge"?gaugePos():gpos;
+    const blink=state==="gaugeDone"&&Math.floor(now*10)%2;
+    ctx.fillStyle=blink?"#ffd23f":"#fff"; ctx.fillRect(gx+gw*p-4,gy-8,8,gh+16);
+    // 結果ドット
+    ctx.font="900 15px sans-serif"; ctx.textAlign="center";
+    GAUGES.forEach((gg,i)=>{ const x=W*(i+0.5)/3, y=gy+gh+34; ctx.fillStyle=i<grades.length?(grades[i]==="PERFECT"?"#ff6b6b":grades[i]==="GOOD"?"#ffe678":"#9fe39f"):"rgba(255,255,255,.45)"; ctx.fillText(gg.name.slice(2),x,y); ctx.fillText(i<grades.length?grades[i]:"ー",x,y+20); });
+  }
+  // 宇宙船・ビーム・物資
+  if(ufo && !ufo.dead){
+    ufo.hit=Math.max(0,ufo.hit-dt);
+    for(const l of lasers){ const a=1-(now-l.t)/0.15; if(a<=0) continue;
+      ctx.strokeStyle=`rgba(255,80,120,${a})`; ctx.lineWidth=6; ctx.beginPath(); ctx.moveTo(rx,ry-64); ctx.lineTo(ufo.x+l.dx,ufo.y+24); ctx.stroke();
+      ctx.strokeStyle=`rgba(255,255,255,${a})`; ctx.lineWidth=2; ctx.stroke(); }
+    lasers=lasers.filter(l=>now-l.t<0.15);
+    drawUFO(ufo.x+(ufo.hit>0?(Math.random()-.5)*8:0),ufo.y,Math.min(1.1,W/360),now,ufo.hit);
+    if(state==="battle"){ const bw=140, bx=ufo.x-bw/2, by=ufo.y+52;
+      ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillRect(bx,by,bw,10); ctx.fillStyle="#ff4d6d"; ctx.fillRect(bx,by,bw*Math.max(0,ufo.hp)/UFO_HP,10); }
+  }
+  for(const c of crates){ c.vy+=600*dt; c.y+=c.vy*dt; c.x+=(rx-c.x)*dt*2;
+    ctx.save(); ctx.translate(c.x,c.y); ctx.rotate((now-c.t)*3);
+    ctx.fillStyle="#c98a3c"; ctx.strokeStyle="#1b2340"; ctx.lineWidth=3; ctx.fillRect(-14,-14,28,28); ctx.strokeRect(-14,-14,28,28);
+    ctx.fillStyle="#ffd23f"; ctx.fillRect(-3,-12,6,24); ctx.fillRect(-12,-3,24,6); ctx.restore(); }
+  crates=crates.filter(c=>c.y<ry-20&&now-c.t<2.5);
+  // 連打ゲージ
+  if(state==="rapid"){
+    const gw=Math.min(300,W-60), gx=(W-gw)/2, gy=H*0.72;
+    ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.roundRect(gx,gy,gw,18,9); ctx.fill();
+    const f=Math.min(1,taps/Math.ceil(CP_EVERY/KM_PER_TAP));
+    ctx.fillStyle=f<0.5?"#ffd23f":f<0.8?"#ff9a3c":"#ff4d4d"; ctx.beginPath(); ctx.roundRect(gx,gy,gw*f,18,9); ctx.fill();
+    ctx.font="900 24px sans-serif"; ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.fillText("連打！連打！",W/2,gy-14);
+  }
+  if(banner && now-banner.t<1.4){
+    const a=1-(now-banner.t)/1.4; ctx.font="900 24px sans-serif"; ctx.textAlign="center";
+    ctx.lineWidth=6; ctx.strokeStyle=`rgba(0,0,0,${0.45*a})`; ctx.globalAlpha=a; ctx.fillStyle=banner.color;
+    const y=state==="gauge"||state==="gaugeDone"?H*0.3+150:H*0.32;
+    ctx.strokeText(banner.text,W/2,y); ctx.fillText(banner.text,W/2,y); ctx.globalAlpha=1;
+  }
+}
+showTitleBest();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
